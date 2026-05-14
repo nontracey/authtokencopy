@@ -185,6 +185,31 @@ function fillSwaggerAuth(token) {
     return null;
   }
   
+  function clickLogoutInDialog() {
+    const selectors = [
+      '.modal-ux-content button.auth-btn-wrapper button',
+      '.modal-ux-content button.btn.authorize',
+      '.dialog-ux button',
+      '.auth-container button',
+      'section.auth button',
+      '.modal button'
+    ];
+    
+    for (const selector of selectors) {
+      const btns = document.querySelectorAll(selector);
+      for (const btn of btns) {
+        if (btn && btn.offsetParent !== null) {
+          const text = (btn.textContent || btn.innerText || '').toLowerCase().trim();
+          if (text.includes('logout') || text.includes('sign out')) {
+            btn.click();
+            return true;
+          }
+        }
+      }
+    }
+    return false;
+  }
+  
   function clickAuthorizeInDialog() {
     const selectors = [
       '.modal-ux-content button.auth-btn-wrapper button',
@@ -196,12 +221,14 @@ function fillSwaggerAuth(token) {
     ];
     
     for (const selector of selectors) {
-      const btn = document.querySelector(selector);
-      if (btn && btn.offsetParent !== null) {
-        const text = btn.textContent || btn.innerText;
-        if (text.toLowerCase().includes('authorize') && !text.toLowerCase().includes('logout')) {
-          btn.click();
-          return true;
+      const btns = document.querySelectorAll(selector);
+      for (const btn of btns) {
+        if (btn && btn.offsetParent !== null) {
+          const text = (btn.textContent || btn.innerText || '').toLowerCase().trim();
+          if ((text.includes('authorize') && !text.includes('logout')) || text.includes('sign in')) {
+            btn.click();
+            return true;
+          }
         }
       }
     }
@@ -213,7 +240,8 @@ function fillSwaggerAuth(token) {
       '.modal-ux .close-modal',
       '.dialog-ux .close-modal',
       '.modal .close',
-      '.modal-ux-header button'
+      '.modal-ux-header button',
+      'button.close-modal'
     ];
     
     for (const selector of closeSelectors) {
@@ -237,30 +265,61 @@ function fillSwaggerAuth(token) {
     for (const selector of authorizeBtnSelectors) {
       const btn = document.querySelector(selector);
       if (btn && btn.offsetParent !== null) {
-        const text = btn.textContent || btn.innerText || '';
-        if (text.toLowerCase().includes('authorize') || btn.querySelector('svg')) {
-          btn.click();
-          return true;
-        }
+        btn.click();
+        return true;
       }
     }
     return false;
   }
   
+  function doFillAndAuthorize(token, callback) {
+    setTimeout(() => {
+      const input = findAuthDialogInput();
+      if (input) {
+        setReactInputValue(input, token);
+        
+        setTimeout(() => {
+          if (clickAuthorizeInDialog()) {
+            setTimeout(() => {
+              closeAuthDialog();
+              if (callback) callback(true);
+            }, 200);
+          } else {
+            if (callback) callback(false);
+          }
+        }, 100);
+      } else {
+        if (callback) callback(false);
+      }
+    }, 100);
+  }
+  
   let input = findAuthDialogInput();
   
   if (input) {
-    setReactInputValue(input, token);
-    setTimeout(() => {
-      if (clickAuthorizeInDialog()) {
-        setTimeout(() => {
-          closeAuthDialog();
-          showNotification('✓ Authorization 已注入并确认', 'success');
-        }, 200);
-      } else {
-        showNotification('✓ Token 已填入，请手动点击 Authorize', 'info');
-      }
-    }, 100);
+    if (clickLogoutInDialog()) {
+      setTimeout(() => {
+        doFillAndAuthorize(token, (success) => {
+          if (success) {
+            showNotification('✓ 已退出旧认证，新 Authorization 已注入', 'success');
+          } else {
+            showNotification('⚠ Token 已填入，请手动点击 Authorize', 'info');
+          }
+        });
+      }, 300);
+    } else {
+      setReactInputValue(input, token);
+      setTimeout(() => {
+        if (clickAuthorizeInDialog()) {
+          setTimeout(() => {
+            closeAuthDialog();
+            showNotification('✓ Authorization 已注入并确认', 'success');
+          }, 200);
+        } else {
+          showNotification('✓ Token 已填入，请手动点击 Authorize', 'info');
+        }
+      }, 100);
+    }
     return;
   }
   
@@ -274,18 +333,26 @@ function fillSwaggerAuth(token) {
       
       if (input) {
         clearInterval(tryFillInput);
-        setReactInputValue(input, token);
         
-        setTimeout(() => {
-          if (clickAuthorizeInDialog()) {
-            setTimeout(() => {
-              closeAuthDialog();
+        if (clickLogoutInDialog()) {
+          setTimeout(() => {
+            doFillAndAuthorize(token, (success) => {
+              if (success) {
+                showNotification('✓ 已退出旧认证，新 Authorization 已注入', 'success');
+              } else {
+                showNotification('⚠ Token 已填入，请手动点击 Authorize', 'info');
+              }
+            });
+          }, 300);
+        } else {
+          doFillAndAuthorize(token, (success) => {
+            if (success) {
               showNotification('✓ Authorization 已注入并确认', 'success');
-            }, 200);
-          } else {
-            showNotification('✓ Token 已填入，请手动点击 Authorize', 'info');
-          }
-        }, 100);
+            } else {
+              showNotification('⚠ Token 已填入，请手动点击 Authorize', 'info');
+            }
+          });
+        }
       } else if (attempts >= maxAttempts) {
         clearInterval(tryFillInput);
         copyToClipboard(token);

@@ -1,5 +1,18 @@
 const authStorage = new Map();
 
+function updateCaptureList() {
+  const entries = Array.from(authStorage.entries());
+  const recentEntries = entries
+    .sort((a, b) => b[1].timestamp - a[1].timestamp)
+    .slice(0, 100);
+  
+  chrome.storage.local.set({ 
+    '_captureList': recentEntries
+  });
+  
+  return recentEntries;
+}
+
 chrome.webRequest.onBeforeSendHeaders.addListener(
   (details) => {
     const headers = details.requestHeaders || [];
@@ -32,13 +45,12 @@ chrome.webRequest.onBeforeSendHeaders.addListener(
       
       chrome.storage.local.set({ [key]: authData });
       
-      chrome.storage.local.set({ 
-        '_lastCapture': authData,
-        '_captureList': Array.from(authStorage.entries()).slice(-50)
-      });
+      updateCaptureList();
+      
+      console.log('[AuthHelper] Captured auth for:', host, 'Total:', authStorage.size);
       
     } catch (error) {
-      console.error('Error processing request:', error);
+      console.error('[AuthHelper] Error processing request:', error);
     }
   },
   { urls: ["<all_urls>"] },
@@ -47,8 +59,11 @@ chrome.webRequest.onBeforeSendHeaders.addListener(
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'getAuthList') {
+    updateCaptureList();
     chrome.storage.local.get(['_captureList'], (result) => {
-      sendResponse({ list: result._captureList || [] });
+      const list = result._captureList || [];
+      console.log('[AuthHelper] Returning auth list, count:', list.length);
+      sendResponse({ list: list });
     });
     return true;
   }
@@ -63,15 +78,32 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'clearAuth') {
     authStorage.clear();
     chrome.storage.local.clear();
+    console.log('[AuthHelper] Cleared all auth data');
     sendResponse({ success: true });
     return true;
   }
+  
+  if (request.action === 'ping') {
+    sendResponse({ status: 'ok', count: authStorage.size });
+    return true;
+  }
+  
+  return false;
 });
 
-chrome.storage.local.get(['_captureList'], (result) => {
+chrome.storage.local.get(null, (result) => {
   if (result._captureList) {
     result._captureList.forEach(([key, value]) => {
       authStorage.set(key, value);
     });
+    console.log('[AuthHelper] Restored', authStorage.size, 'auth entries from storage');
   }
+});
+
+chrome.runtime.onInstalled.addListener(() => {
+  console.log('[AuthHelper] Extension installed');
+});
+
+chrome.runtime.onStartup.addListener(() => {
+  console.log('[AuthHelper] Browser started, monitoring requests...');
 });

@@ -3,14 +3,20 @@ let authList = [];
 document.addEventListener('DOMContentLoaded', () => {
   loadAuthList();
   
-  document.getElementById('refreshBtn').addEventListener('click', loadAuthList);
+  document.getElementById('refreshBtn').addEventListener('click', () => {
+    loadAuthList();
+  });
   document.getElementById('clearBtn').addEventListener('click', clearAuth);
   document.getElementById('injectBtn').addEventListener('click', injectAuth);
 });
 
 function loadAuthList() {
   chrome.runtime.sendMessage({ action: 'getAuthList' }, (response) => {
-    authList = response.list || [];
+    if (chrome.runtime.lastError) {
+      console.error('Failed to get auth list:', chrome.runtime.lastError);
+      return;
+    }
+    authList = response?.list || [];
     renderAuthList();
     updateStatus();
   });

@@ -276,13 +276,25 @@ function fillSwaggerAuth(token) {
       for (const btn of btns) {
         if (btn && btn.offsetParent !== null) {
           const text = (btn.textContent || btn.innerText || '').toLowerCase().trim();
-          if (text === 'close' || text === '×' || btn.classList.contains('close')) {
+          if (text === 'close' || text === '×' || btn.classList.contains('close') || btn.classList.contains('close-modal')) {
             btn.click();
             return true;
           }
         }
       }
     }
+    
+    const allButtons = document.querySelectorAll('button');
+    for (const btn of allButtons) {
+      if (btn && btn.offsetParent !== null) {
+        const text = (btn.textContent || btn.innerText || '').toLowerCase().trim();
+        if (text === 'close') {
+          btn.click();
+          return true;
+        }
+      }
+    }
+    
     return false;
   }
   

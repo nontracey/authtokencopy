@@ -165,34 +165,59 @@ function fillSwaggerAuth(token) {
   function findAuthDialogInput() {
     const selectors = [
       '.modal-ux-content input[type="text"]',
+      '.modal-ux input[type="text"]',
+      '.dialog-ux-content input[type="text"]',
       '.dialog-ux input[type="text"]',
       '.auth-container input[type="text"]',
       '.modal input[type="text"]',
+      '.modal-dialog input[type="text"]',
       'section.auth input[type="text"]',
       '.auth-btn-wrapper input[type="text"]',
+      '.auth-section input[type="text"]',
       'input[placeholder*="Bearer"]',
       'input[placeholder*="bearer"]',
       'input[placeholder*="Token"]',
-      'input[placeholder*="token"]'
+      'input[placeholder*="token"]',
+      'input[placeholder*="api_key"]',
+      'input[placeholder*="API key"]',
+      'input[name="authorization"]',
+      'input[name="token"]',
+      '.swagger-ui input[type="text"]'
     ];
     
     for (const selector of selectors) {
-      const input = document.querySelector(selector);
-      if (input && input.offsetParent !== null) {
-        return input;
+      try {
+        const inputs = document.querySelectorAll(selector);
+        for (const input of inputs) {
+          if (input && input.offsetParent !== null && input.type === 'text') {
+            return input;
+          }
+        }
+      } catch (e) {}
+    }
+    
+    const modals = document.querySelectorAll('.modal-ux, .dialog-ux, .modal, [role="dialog"]');
+    for (const modal of modals) {
+      if (modal.offsetParent !== null) {
+        const inputs = modal.querySelectorAll('input[type="text"]');
+        if (inputs.length > 0) {
+          return inputs[0];
+        }
       }
     }
+    
     return null;
   }
   
   function clickLogoutInDialog() {
     const selectors = [
-      '.modal-ux-content button.auth-btn-wrapper button',
-      '.modal-ux-content button.btn.authorize',
+      '.modal-ux-content button',
+      '.modal-ux button',
       '.dialog-ux button',
       '.auth-container button',
       'section.auth button',
-      '.modal button'
+      '.modal button',
+      'button'
     ];
     
     for (const selector of selectors) {
@@ -200,7 +225,7 @@ function fillSwaggerAuth(token) {
       for (const btn of btns) {
         if (btn && btn.offsetParent !== null) {
           const text = (btn.textContent || btn.innerText || '').toLowerCase().trim();
-          if (text.includes('logout') || text.includes('sign out')) {
+          if (text === 'logout' || text === 'sign out' || text.includes('logout')) {
             btn.click();
             return true;
           }
@@ -212,12 +237,13 @@ function fillSwaggerAuth(token) {
   
   function clickAuthorizeInDialog() {
     const selectors = [
-      '.modal-ux-content button.auth-btn-wrapper button',
-      '.modal-ux-content button.btn.authorize',
-      '.dialog-ux button.authorize',
-      '.auth-container button.authorize',
-      'section.auth button.authorize',
-      '.modal button.btn-primary:not(.close)'
+      '.modal-ux-content button',
+      '.modal-ux button',
+      '.dialog-ux button',
+      '.auth-container button',
+      'section.auth button',
+      '.modal button',
+      'button'
     ];
     
     for (const selector of selectors) {
@@ -225,7 +251,7 @@ function fillSwaggerAuth(token) {
       for (const btn of btns) {
         if (btn && btn.offsetParent !== null) {
           const text = (btn.textContent || btn.innerText || '').toLowerCase().trim();
-          if ((text.includes('authorize') && !text.includes('logout')) || text.includes('sign in')) {
+          if ((text === 'authorize' && !text.includes('logout')) || text === 'sign in') {
             btn.click();
             return true;
           }
@@ -241,14 +267,20 @@ function fillSwaggerAuth(token) {
       '.dialog-ux .close-modal',
       '.modal .close',
       '.modal-ux-header button',
-      'button.close-modal'
+      'button.close-modal',
+      'button.close'
     ];
     
     for (const selector of closeSelectors) {
-      const btn = document.querySelector(selector);
-      if (btn && btn.offsetParent !== null) {
-        btn.click();
-        return true;
+      const btns = document.querySelectorAll(selector);
+      for (const btn of btns) {
+        if (btn && btn.offsetParent !== null) {
+          const text = (btn.textContent || btn.innerText || '').toLowerCase().trim();
+          if (text === 'close' || text === '×' || btn.classList.contains('close')) {
+            btn.click();
+            return true;
+          }
+        }
       }
     }
     return false;
@@ -272,7 +304,7 @@ function fillSwaggerAuth(token) {
     return false;
   }
   
-  function doFillAndAuthorize(token, callback) {
+  function fillAndAuthorize(token, callback) {
     setTimeout(() => {
       const input = findAuthDialogInput();
       if (input) {
@@ -291,74 +323,104 @@ function fillSwaggerAuth(token) {
       } else {
         if (callback) callback(false);
       }
-    }, 100);
+    }, 150);
+  }
+  
+  function handleLogoutAndFill(token) {
+    if (clickLogoutInDialog()) {
+      let attempts = 0;
+      const maxAttempts = 20;
+      
+      const checkForInput = setInterval(() => {
+        attempts++;
+        const input = findAuthDialogInput();
+        
+        if (input) {
+          clearInterval(checkForInput);
+          setReactInputValue(input, token);
+          
+          setTimeout(() => {
+            if (clickAuthorizeInDialog()) {
+              setTimeout(() => {
+                closeAuthDialog();
+                showNotification('✓ 已退出旧认证，新 Token 已注入', 'success');
+              }, 200);
+            } else {
+              showNotification('✓ Token 已填入，请手动点击 Authorize', 'info');
+            }
+          }, 100);
+        } else if (attempts >= maxAttempts) {
+          clearInterval(checkForInput);
+          closeAuthDialog();
+          setTimeout(() => {
+            openAuthDialog();
+            setTimeout(() => {
+              const retryInput = findAuthDialogInput();
+              if (retryInput) {
+                setReactInputValue(retryInput, token);
+                setTimeout(() => {
+                  if (clickAuthorizeInDialog()) {
+                    setTimeout(() => {
+                      closeAuthDialog();
+                      showNotification('✓ 已退出旧认证，新 Token 已注入', 'success');
+                    }, 200);
+                  } else {
+                    showNotification('✓ Token 已填入，请手动点击 Authorize', 'info');
+                  }
+                }, 100);
+              } else {
+                copyToClipboard(token);
+                showNotification('⚠ 未找到输入框，Token 已复制到剪贴板', 'info');
+              }
+            }, 300);
+          }, 200);
+        }
+      }, 100);
+      return true;
+    }
+    return false;
   }
   
   let input = findAuthDialogInput();
   
   if (input) {
-    if (clickLogoutInDialog()) {
-      setTimeout(() => {
-        doFillAndAuthorize(token, (success) => {
-          if (success) {
-            showNotification('✓ 已退出旧认证，新 Authorization 已注入', 'success');
-          } else {
-            showNotification('⚠ Token 已填入，请手动点击 Authorize', 'info');
-          }
-        });
-      }, 300);
-    } else {
-      setReactInputValue(input, token);
-      setTimeout(() => {
-        if (clickAuthorizeInDialog()) {
-          setTimeout(() => {
-            closeAuthDialog();
-            showNotification('✓ Authorization 已注入并确认', 'success');
-          }, 200);
-        } else {
-          showNotification('✓ Token 已填入，请手动点击 Authorize', 'info');
-        }
-      }, 100);
-    }
+    setReactInputValue(input, token);
+    setTimeout(() => {
+      if (clickAuthorizeInDialog()) {
+        setTimeout(() => {
+          closeAuthDialog();
+          showNotification('✓ Authorization 已注入并确认', 'success');
+        }, 200);
+      } else {
+        showNotification('✓ Token 已填入，请手动点击 Authorize', 'info');
+      }
+    }, 100);
     return;
   }
   
   if (openAuthDialog()) {
-    let attempts = 0;
-    const maxAttempts = 10;
-    
-    const tryFillInput = setInterval(() => {
-      attempts++;
+    setTimeout(() => {
       input = findAuthDialogInput();
       
       if (input) {
-        clearInterval(tryFillInput);
-        
-        if (clickLogoutInDialog()) {
-          setTimeout(() => {
-            doFillAndAuthorize(token, (success) => {
-              if (success) {
-                showNotification('✓ 已退出旧认证，新 Authorization 已注入', 'success');
-              } else {
-                showNotification('⚠ Token 已填入，请手动点击 Authorize', 'info');
-              }
-            });
-          }, 300);
-        } else {
-          doFillAndAuthorize(token, (success) => {
-            if (success) {
+        setReactInputValue(input, token);
+        setTimeout(() => {
+          if (clickAuthorizeInDialog()) {
+            setTimeout(() => {
+              closeAuthDialog();
               showNotification('✓ Authorization 已注入并确认', 'success');
-            } else {
-              showNotification('⚠ Token 已填入，请手动点击 Authorize', 'info');
-            }
-          });
+            }, 200);
+          } else {
+            showNotification('✓ Token 已填入，请手动点击 Authorize', 'info');
+          }
+        }, 100);
+      } else {
+        if (!handleLogoutAndFill(token)) {
+          copyToClipboard(token);
+          showNotification('⚠ 未找到输入框，Token 已复制到剪贴板', 'info');
         }
-      } else if (attempts >= maxAttempts) {
-        clearInterval(tryFillInput);
-        copyToClipboard(token);
-        showNotification('⚠ 未找到输入框，Token 已复制到剪贴板', 'info');
       }
-    }, 100);
+    }, 300);
   } else {
     copyToClipboard(token);
     showNotification('⚠ 未找到 Authorize 按钮，Token 已复制到剪贴板', 'info');
